@@ -20,7 +20,7 @@ from lib.vk_friends_parser import VKClient, VKFriendsParser
 vk = VKClient(token=VK_SERVICE_ACCESS_TOKEN)
 
 # === 2. Разрешаем короткое имя/ссылку на ID ===
-profile_name = "viktor_rudnev"
+profile_name = "arsenyc"
 root_id = vk.resolve_screen_name(profile_name)
 print("ID пользователя:", root_id)
 

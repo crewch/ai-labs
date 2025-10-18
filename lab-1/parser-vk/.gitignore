@@ -207,3 +207,6 @@ __marimo__/
 
 *.gz
 *.html
+lib/bindings/
+lib/tom-select/
+lib/vis-9.1.2/
