@@ -1,0 +1,394 @@
+import requests
+import json
+import time
+from datetime import datetime
+import re
+
+class VKParser:
+    def __init__(self, access_token, version='5.131'):
+        self.access_token = access_token
+        self.version = version
+        self.base_url = 'https://api.vk.com/method/'
+        
+    def make_request(self, method, params):
+        """Базовый метод для запросов к VK API"""
+        url = f"{self.base_url}{method}"
+        params.update({
+            'access_token': self.access_token,
+            'v': self.version
+        })
+        
+        try:
+            response = requests.get(url, params=params)
+            data = response.json()
+            
+            if 'error' in data:
+                print(f"Ошибка VK API: {data['error']['error_msg']}")
+                return None
+                
+            return data['response']
+        except Exception as e:
+            print(f"Ошибка запроса: {e}")
+            return None
+
+    def resolve_screen_name(self, screen_name):
+        """Преобразует короткое имя в числовой ID"""
+        print(f"Преобразуем короткое имя '{screen_name}' в ID...")
+        
+        response = self.make_request('utils.resolveScreenName', {
+            'screen_name': screen_name
+        })
+        
+        if response and 'object_id' in response:
+            user_id = response['object_id']
+            print(f"Найден ID: {user_id}")
+            return user_id
+        else:
+            print(f"Не удалось найти ID для '{screen_name}'")
+            return None
+
+    def get_user_id(self, user_input):
+        """Определяет ID пользователя - принимает как числовой ID, так и короткое имя"""
+        # Если это число, возвращаем как есть
+        if isinstance(user_input, int) or (isinstance(user_input, str) and user_input.isdigit()):
+            return int(user_input)
+        
+        # Если это короткое имя, преобразуем в ID
+        if isinstance(user_input, str) and not user_input.startswith('-'):
+            return self.resolve_screen_name(user_input)
+        
+        return user_input
+
+    def get_wall_posts(self, owner_id, count=100):
+        """Получает посты со стены пользователя"""
+        print(f"Получаем посты со стены пользователя {owner_id}...")
+        
+        # Преобразуем owner_id в числовой формат если нужно
+        numeric_owner_id = self.get_user_id(owner_id)
+        if numeric_owner_id is None:
+            print(f"Не удалось определить ID для {owner_id}")
+            return []
+        
+        posts = []
+        offset = 0
+        max_posts = count
+        
+        while len(posts) < max_posts:
+            response = self.make_request('wall.get', {
+                'owner_id': numeric_owner_id,
+                'count': min(100, max_posts - len(posts)),
+                'offset': offset,
+                'extended': 1  # Получаем дополнительную информацию
+            })
+            
+            if not response or 'items' not in response:
+                break
+                
+            posts.extend(response['items'])
+            offset += len(response['items'])
+            
+            if len(response['items']) == 0:
+                break
+                
+            time.sleep(0.34)
+        
+        print(f"Получено {len(posts)} постов")
+        return posts, numeric_owner_id
+    
+    def get_likes(self, owner_id, item_id, item_type='post'):
+        """Получает список пользователей, лайкнувших запись"""
+        likes = []
+        offset = 0
+        count = 1000
+        
+        while True:
+            response = self.make_request('likes.getList', {
+                'type': item_type,
+                'owner_id': owner_id,
+                'item_id': item_id,
+                'count': count,
+                'offset': offset,
+                'filter': 'likes'
+            })
+            
+            if not response or 'items' not in response:
+                break
+                
+            likes.extend(response['items'])
+            offset += len(response['items'])
+            
+            if len(response['items']) < count:
+                break
+                
+            time.sleep(0.34)
+        
+        return likes
+    
+    def get_comments(self, owner_id, post_id):
+        """Получает комментарии к посту"""
+        comments = []
+        offset = 0
+        count = 100
+        
+        while True:
+            response = self.make_request('wall.getComments', {
+                'owner_id': owner_id,
+                'post_id': post_id,
+                'count': count,
+                'offset': offset,
+                'extended': 0
+            })
+            
+            if not response or 'items' not in response:
+                break
+                
+            for comment in response['items']:
+                comment_data = {
+                    'id': comment['id'],
+                    'from_id': comment['from_id'],
+                    'date': comment['date'],
+                    'text': comment['text'],
+                    'likes': comment.get('likes', {}).get('count', 0)
+                }
+                comments.append(comment_data)
+            
+            offset += len(response['items'])
+            
+            if len(response['items']) < count:
+                break
+                
+            time.sleep(0.34)
+        
+        return comments
+    
+    def get_reposts(self, owner_id, post_id):
+        """Получает информацию о репостах"""
+        response = self.make_request('wall.getReposts', {
+            'owner_id': owner_id,
+            'post_id': post_id,
+            'count': 1000
+        })
+        
+        if not response:
+            return []
+            
+        reposts = []
+        if 'items' in response:
+            for repost in response['items']:
+                repost_data = {
+                    'id': repost['id'],
+                    'from_id': repost['from_id'],
+                    'date': repost['date'],
+                    'text': repost.get('text', ''),
+                    'copy_history': repost.get('copy_history', [])
+                }
+                reposts.append(repost_data)
+        
+        return reposts
+    
+    def get_user_info(self, user_ids):
+        """Получает информацию о пользователях"""
+        if not user_ids:
+            return {}
+            
+        # Фильтруем только числовые ID
+        numeric_ids = []
+        for user_id in user_ids:
+            if isinstance(user_id, int) or (isinstance(user_id, str) and user_id.lstrip('-').isdigit()):
+                numeric_ids.append(str(user_id))
+        
+        if not numeric_ids:
+            return {}
+            
+        response = self.make_request('users.get', {
+            'user_ids': ','.join(numeric_ids),
+            'fields': 'first_name,last_name,sex,bdate,city,country,screen_name'
+        })
+        
+        if not response:
+            return {}
+            
+        user_info = {}
+        for user in response:
+            user_info[user['id']] = {
+                'first_name': user.get('first_name', ''),
+                'last_name': user.get('last_name', ''),
+                'sex': user.get('sex', 0),
+                'bdate': user.get('bdate', ''),
+                'city': user.get('city', {}).get('title', '') if 'city' in user else '',
+                'country': user.get('country', {}).get('title', '') if 'country' in user else '',
+                'screen_name': user.get('screen_name', '')
+            }
+        
+        return user_info
+    
+    def process_post(self, post, owner_id):
+        """Обрабатывает один пост и собирает всю информацию"""
+        post_id = post['id']
+        
+        print(f"Обрабатываем пост {post_id}...")
+        
+        # Основная информация о посте
+        post_data = {
+            'post_id': post_id,
+            'owner_id': owner_id,
+            'date': post['date'],
+            'text': post.get('text', '')[:500],
+            'likes_count': post.get('likes', {}).get('count', 0),
+            'comments_count': post.get('comments', {}).get('count', 0),
+            'reposts_count': post.get('reposts', {}).get('count', 0),
+            'views_count': post.get('views', {}).get('count', 0) if 'views' in post else 0
+        }
+        
+        # Проверяем, является ли пост репостом
+        if 'copy_history' in post and post['copy_history']:
+            original_post = post['copy_history'][0]
+            post_data['is_repost'] = True
+            post_data['reposted_from'] = {
+                'owner_id': original_post['owner_id'],
+                'post_id': original_post['id'],
+                'text': original_post.get('text', '')[:500]
+            }
+        else:
+            post_data['is_repost'] = False
+            post_data['reposted_from'] = None
+        
+        # Собираем лайки (только если owner_id числовой)
+        if isinstance(owner_id, int):
+            print(f"  Собираем лайки...")
+            post_data['likes'] = self.get_likes(owner_id, post_id)
+            time.sleep(0.34)
+            
+            # Собираем комментарии
+            print(f"  Собираем комментарии...")
+            post_data['comments'] = self.get_comments(owner_id, post_id)
+            time.sleep(0.34)
+            
+            # Собираем репосты
+            print(f"  Собираем репосты...")
+            post_data['reposts'] = self.get_reposts(owner_id, post_id)
+            time.sleep(0.34)
+        else:
+            print(f"  Пропускаем сбор лайков/комментариев - неверный owner_id")
+            post_data['likes'] = []
+            post_data['comments'] = []
+            post_data['reposts'] = []
+        
+        return post_data
+    
+    def parse_user_wall(self, user_input, max_posts=50):
+        """Парсит стену пользователя"""
+        print(f"\n=== Начинаем парсинг стены пользователя {user_input} ===")
+        
+        posts, numeric_owner_id = self.get_wall_posts(user_input, max_posts)
+        processed_posts = []
+        
+        for i, post in enumerate(posts):
+            print(f"Пост {i+1}/{len(posts)}")
+            processed_post = self.process_post(post, numeric_owner_id)
+            processed_posts.append(processed_post)
+            
+            if i < len(posts) - 1:
+                time.sleep(1)
+        
+        return processed_posts, numeric_owner_id
+    
+    def collect_all_user_ids(self, posts_data):
+        """Собирает все user_id из данных"""
+        user_ids = set()
+        
+        for post in posts_data:
+            # Лайки
+            user_ids.update(post['likes'])
+            
+            # Комментарии
+            for comment in post['comments']:
+                user_ids.add(comment['from_id'])
+            
+            # Репосты
+            for repost in post['reposts']:
+                user_ids.add(repost['from_id'])
+        
+        return list(user_ids)
+    
+    def analyze_two_users(self, user1_input, user2_input, max_posts_per_user=20):
+        """Основной метод для анализа двух пользователей"""
+        print(f"Запускаем анализ пользователей {user1_input} и {user2_input}")
+        
+        # Парсим стены обоих пользователей
+        user1_posts, user1_id = self.parse_user_wall(user1_input, max_posts_per_user)
+        user2_posts, user2_id = self.parse_user_wall(user2_input, max_posts_per_user)
+        
+        # Собираем все user_id для получения информации о пользователях
+        all_user_ids = set()
+        all_user_ids.update(self.collect_all_user_ids(user1_posts))
+        all_user_ids.update(self.collect_all_user_ids(user2_posts))
+        
+        print(f"Собираем информацию о {len(all_user_ids)} пользователях...")
+        user_info = self.get_user_info(list(all_user_ids))
+        
+        # Формируем итоговый результат
+        result = {
+            'analysis_info': {
+                'timestamp': datetime.now().isoformat(),
+                'user1_input': user1_input,
+                'user2_input': user2_input,
+                'user1_id': user1_id,
+                'user2_id': user2_id,
+                'total_posts_analyzed': len(user1_posts) + len(user2_posts),
+                'total_users_found': len(all_user_ids)
+            },
+            'user1_posts': user1_posts,
+            'user2_posts': user2_posts,
+            'user_info': user_info
+        }
+        
+        return result
+    
+    def save_to_json(self, data, filename=None):
+        """Сохраняет данные в JSON файл"""
+        if filename is None:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            user1 = str(data['analysis_info']['user1_input']).replace('/', '_')
+            user2 = str(data['analysis_info']['user2_input']).replace('/', '_')
+            filename = f"vk_analysis_{user1}_{user2}_{timestamp}.json"
+        
+        with open(filename, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        
+        print(f"Данные сохранены в файл: {filename}")
+        return filename
+
+def main():
+    # Настройки
+    VK_ACCESS_TOKEN = 'e68624dce68624dce68624dc9ee5bde388ee686e68624dc8e7589f8b43544c74ac5ca7c'  # Замените на ваш токен
+    USER1_ID = 'a.marchenko3'  # Можно использовать короткие имена
+    USER2_ID = 'arsenyc'      # Можно использовать короткие имена
+    MAX_POSTS_PER_USER = 10
+    
+    # Создаем парсер
+    parser = VKParser(VK_ACCESS_TOKEN)
+    
+    try:
+        # Запускаем анализ
+        result = parser.analyze_two_users(USER1_ID, USER2_ID, MAX_POSTS_PER_USER)
+        
+        # Сохраняем результаты
+        filename = parser.save_to_json(result)
+        
+        # Выводим краткую статистику
+        analysis = result['analysis_info']
+        print(f"\n=== АНАЛИЗ ЗАВЕРШЕН ===")
+        print(f"Пользователь 1: {analysis['user1_input']} -> ID: {analysis['user1_id']}")
+        print(f"Пользователь 2: {analysis['user2_input']} -> ID: {analysis['user2_id']}")
+        print(f"Проанализировано постов: {analysis['total_posts_analyzed']}")
+        print(f"Найдено пользователей: {analysis['total_users_found']}")
+        print(f"Файл с результатами: {filename}")
+        
+    except Exception as e:
+        print(f"Произошла ошибка: {e}")
+        import traceback
+        traceback.print_exc()
+
+if __name__ == "__main__":
+    main()

@@ -207,7 +207,8 @@ __marimo__/
 
 *.gz
 *.html
-lib/bindings/
-lib/tom-select/
-lib/vis-9.1.2/
+parser-vk/lib/bindings/
+parser-vk/lib/tom-select/
+parser-vk/lib/vis-9.1.2/
 aivenv
+data/
