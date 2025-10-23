@@ -28,7 +28,7 @@ print("ID пользователя:", root_id)
 parser = VKFriendsParser(
     vk_client=vk, save_photos=False
 )  # save_photos сохраняет локально
-parser.fetch_network_fast([root_id], depth=2)
+parser.fetch_network_fast([root_id], depth=1)
 
 # === 4. Строим граф ===
 G = parser.build_graph()

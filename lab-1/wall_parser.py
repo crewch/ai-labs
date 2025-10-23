@@ -2,7 +2,9 @@ import requests
 import json
 import time
 from datetime import datetime
-import re
+from collections import defaultdict
+from datetime import datetime
+import csv
 
 class VKParser:
     def __init__(self, access_token, version='5.131'):
@@ -358,6 +360,108 @@ class VKParser:
         
         print(f"Данные сохранены в файл: {filename}")
         return filename
+    
+    def generate_interaction_csv(self, user_input, output_filename=None, max_posts=100):
+        """
+        Генерирует CSV файл со статистикой взаимодействий пользователей
+        
+        Args:
+            user_input: ID или короткое имя пользователя
+            output_filename: имя выходного файла (опционально)
+            max_posts: максимальное количество постов для анализа
+            
+        Returns:
+            Путь к созданному CSV файлу
+        """
+        print(f"Генерируем CSV со статистикой взаимодействий для {user_input}...")
+        
+        # Получаем посты пользователя
+        posts, owner_id = self.parse_user_wall(user_input, max_posts)
+        
+        if not posts:
+            print("Не удалось получить посты пользователя")
+            return None
+        
+        # Создаем словарь для агрегации статистики
+        # Структура: {interactor_id: {'likes': count, 'comments': count, 'reposts': count}}
+        interactions = defaultdict(lambda: {'likes': 0, 'comments': 0, 'reposts': 0})
+        
+        # Обрабатываем каждый пост для сбора статистики
+        for post in posts:
+            self._process_post_for_interactions(post, interactions, owner_id)
+        
+        # Генерируем имя файла если не предоставлено
+        if not output_filename:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            user_identifier = str(user_input).replace('/', '_')
+            output_filename = f"vk_interactions_{user_identifier}_{timestamp}.csv"
+        
+        # Записываем данные в CSV
+        return self._write_interactions_to_csv(owner_id, interactions, output_filename)
+    
+    def _process_post_for_interactions(self, post, interactions, owner_id):
+        """Обрабатывает один пост для сбора статистики взаимодействий"""
+        post_id = post['post_id']
+        
+        # Обрабатываем лайки
+        for like_user_id in post.get('likes', []):
+            interactions[like_user_id]['likes'] += 1
+        
+        # Обрабатываем комментарии
+        for comment in post.get('comments', []):
+            commenter_id = comment['from_id']
+            interactions[commenter_id]['comments'] += 1
+        
+        # Обрабатываем репосты
+        for repost in post.get('reposts', []):
+            reposter_id = repost['from_id']
+            interactions[reposter_id]['reposts'] += 1
+    
+    def _write_interactions_to_csv(self, owner_id, interactions, output_filename):
+        """Записывает собранную статистику в CSV файл"""
+        
+        # Получаем информацию о пользователях для более читаемого вывода
+        all_interactor_ids = list(interactions.keys())
+        user_info = self.get_user_info(all_interactor_ids)
+        
+        with open(output_filename, 'w', newline='', encoding='utf-8') as csvfile:
+            writer = csv.writer(csvfile)
+            
+            # Записываем заголовок
+            writer.writerow([
+                'target_user_id',
+                'interactor_id', 
+                # 'interactor_name',
+                'likes_count',
+                'comments_count', 
+                'reposts_count',
+                # 'total_interactions'
+            ])
+            
+            # Записываем данные
+            for interactor_id, stats in interactions.items():
+                # # Получаем имя пользователя если доступно
+                # user_data = user_info.get(interactor_id, {})
+                # interactor_name = f"{user_data.get('first_name', '')} {user_data.get('last_name', '')}".strip()
+                # if not interactor_name:
+                #     interactor_name = f"User_{interactor_id}"
+                
+                # total_interactions = stats['likes'] + stats['comments'] + stats['reposts']
+                
+                writer.writerow([
+                    owner_id,
+                    interactor_id,
+                    # interactor_name,
+                    stats['likes'],
+                    stats['comments'],
+                    stats['reposts'],
+                    # total_interactions
+                ])
+        
+        print(f"CSV файл создан: {output_filename}")
+        print(f"Обработано взаимодействий: {len(interactions)}")
+        
+        return output_filename
 
 def main():
     # Настройки
@@ -368,27 +472,29 @@ def main():
     
     # Создаем парсер
     parser = VKParser(VK_ACCESS_TOKEN)
+
+    csv_file = parser.generate_interaction_csv('a.marchenko3', max_posts=10)
     
-    try:
-        # Запускаем анализ
-        result = parser.analyze_two_users(USER1_ID, USER2_ID, MAX_POSTS_PER_USER)
+    # try:
+    #     # Запускаем анализ
+    #     result = parser.analyze_two_users(USER1_ID, USER2_ID, MAX_POSTS_PER_USER)
         
-        # Сохраняем результаты
-        filename = parser.save_to_json(result)
+    #     # Сохраняем результаты
+    #     filename = parser.save_to_json(result)
         
-        # Выводим краткую статистику
-        analysis = result['analysis_info']
-        print(f"\n=== АНАЛИЗ ЗАВЕРШЕН ===")
-        print(f"Пользователь 1: {analysis['user1_input']} -> ID: {analysis['user1_id']}")
-        print(f"Пользователь 2: {analysis['user2_input']} -> ID: {analysis['user2_id']}")
-        print(f"Проанализировано постов: {analysis['total_posts_analyzed']}")
-        print(f"Найдено пользователей: {analysis['total_users_found']}")
-        print(f"Файл с результатами: {filename}")
+    #     # Выводим краткую статистику
+    #     analysis = result['analysis_info']
+    #     print(f"\n=== АНАЛИЗ ЗАВЕРШЕН ===")
+    #     print(f"Пользователь 1: {analysis['user1_input']} -> ID: {analysis['user1_id']}")
+    #     print(f"Пользователь 2: {analysis['user2_input']} -> ID: {analysis['user2_id']}")
+    #     print(f"Проанализировано постов: {analysis['total_posts_analyzed']}")
+    #     print(f"Найдено пользователей: {analysis['total_users_found']}")
+    #     print(f"Файл с результатами: {filename}")
         
-    except Exception as e:
-        print(f"Произошла ошибка: {e}")
-        import traceback
-        traceback.print_exc()
+    # except Exception as e:
+    #     print(f"Произошла ошибка: {e}")
+    #     import traceback
+    #     traceback.print_exc()
 
 if __name__ == "__main__":
     main()
