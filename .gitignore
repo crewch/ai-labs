@@ -207,15 +207,17 @@ __marimo__/
 
 *.gz
 *.html
+*.csv
+*.json
+
+aivenv
+ai2_venv
+
+data/
+
 parser-vk/lib/bindings/
 parser-vk/lib/tom-select/
 parser-vk/lib/vis-9.1.2/
-aivenv
-data/
-edges.csv
-edges2.csv
-posts_count.csv
-nodes.json
-nodes2.json
-ai2_venv
-nodes_inference.json
+
+!edges_inference.csv
+!saved_data/
