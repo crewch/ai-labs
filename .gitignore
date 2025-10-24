@@ -214,6 +214,7 @@ aivenv
 data/
 edges.csv
 edges2.csv
+edges_inference.csv
 posts_count.csv
 nodes.json
 nodes2.json
