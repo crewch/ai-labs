@@ -5,6 +5,7 @@ from datetime import datetime
 from collections import defaultdict
 from datetime import datetime
 import csv
+import pandas as pd
 
 class VKParser:
     def __init__(self, access_token, version='5.131'):
@@ -34,7 +35,6 @@ class VKParser:
             return None
 
     def resolve_screen_name(self, screen_name):
-        """Преобразует короткое имя в числовой ID"""
         print(f"Преобразуем короткое имя '{screen_name}' в ID...")
         
         response = self.make_request('utils.resolveScreenName', {
@@ -50,8 +50,7 @@ class VKParser:
             return None
 
     def get_user_id(self, user_input):
-        """Определяет ID пользователя - принимает как числовой ID, так и короткое имя"""
-        # Если это число, возвращаем как есть
+
         if isinstance(user_input, int) or (isinstance(user_input, str) and user_input.isdigit()):
             return int(user_input)
         
@@ -95,6 +94,19 @@ class VKParser:
             time.sleep(0.34)
         
         print(f"Получено {len(posts)} постов")
+
+        posts_count = pd.read_csv('posts_count.csv')
+
+        new_row = pd.DataFrame({
+            'id': [numeric_owner_id],
+            'posts': [len(posts)]
+        })
+
+        posts_count = pd.concat([posts_count, new_row], ignore_index=True)
+        posts_count.to_csv('posts_count.csv', index=False)
+
+
+
         return posts, numeric_owner_id
     
     def get_likes(self, owner_id, item_id, item_type='post'):
@@ -418,52 +430,46 @@ class VKParser:
             interactions[reposter_id]['reposts'] += 1
     
     def _write_interactions_to_csv(self, owner_id, interactions, output_filename):
-        """Записывает собранную статистику в CSV файл"""
-        
-        # Получаем информацию о пользователях для более читаемого вывода
-        all_interactor_ids = list(interactions.keys())
-        user_info = self.get_user_info(all_interactor_ids)
-        
-        with open(output_filename, 'w', newline='', encoding='utf-8') as csvfile:
-            writer = csv.writer(csvfile)
-            
-            # Записываем заголовок
-            writer.writerow([
-                'target_user_id',
-                'interactor_id', 
-                # 'interactor_name',
-                'likes_count',
-                'comments_count', 
-                'reposts_count',
-                # 'total_interactions'
-            ])
-            
-            # Записываем данные
-            for interactor_id, stats in interactions.items():
-                # # Получаем имя пользователя если доступно
-                # user_data = user_info.get(interactor_id, {})
-                # interactor_name = f"{user_data.get('first_name', '')} {user_data.get('last_name', '')}".strip()
-                # if not interactor_name:
-                #     interactor_name = f"User_{interactor_id}"
-                
-                # total_interactions = stats['likes'] + stats['comments'] + stats['reposts']
-                
-                writer.writerow([
-                    owner_id,
-                    interactor_id,
-                    # interactor_name,
-                    stats['likes'],
-                    stats['comments'],
-                    stats['reposts'],
-                    # total_interactions
-                ])
-        
-        print(f"CSV файл создан: {output_filename}")
-        print(f"Обработано взаимодействий: {len(interactions)}")
-        
-        return output_filename
+        # Определяем имя файла для сохранения (вы используете 'edges.csv', но output_filename игнорируется)
+        target_file = 'edges.csv'  # или можно использовать output_filename
 
-def main():
+        # Пытаемся загрузить существующий файл или создать пустой DataFrame
+        try:
+            edges = pd.read_csv(target_file)
+        except FileNotFoundError:
+            edges = pd.DataFrame(columns=[
+                'target_user_id',
+                'interactor_id',
+                'likes_count',
+                'comments_count',
+                'reposts_count'
+            ])
+
+        # Собираем все новые строки в список
+        new_rows = []
+        for interactor_id, stats in interactions.items():
+            new_rows.append({
+                'target_user_id': owner_id,
+                'interactor_id': interactor_id,
+                'likes_count': stats['likes'],
+                'comments_count': stats['comments'],
+                'reposts_count': stats['reposts']
+            })
+
+        # Добавляем все новые строки сразу
+        if new_rows:
+            new_df = pd.DataFrame(new_rows)
+            edges = pd.concat([edges, new_df], ignore_index=True)
+
+        # Сохраняем один раз
+        print(edges)
+        edges.to_csv(target_file, index=False)
+
+        print(f"CSV файл обновлён: {target_file}")
+        print(f"Добавлено взаимодействий: {len(new_rows)}")
+        return target_file
+
+def edges_parser(wall_id):
     # Настройки
     VK_ACCESS_TOKEN = 'e68624dce68624dce68624dc9ee5bde388ee686e68624dc8e7589f8b43544c74ac5ca7c'  # Замените на ваш токен
     USER1_ID = 'a.marchenko3'  # Можно использовать короткие имена
@@ -473,7 +479,7 @@ def main():
     # Создаем парсер
     parser = VKParser(VK_ACCESS_TOKEN)
 
-    csv_file = parser.generate_interaction_csv('a.marchenko3', max_posts=10)
+    csv_file = parser.generate_interaction_csv(wall_id, max_posts=1)
     
     # try:
     #     # Запускаем анализ
@@ -496,5 +502,5 @@ def main():
     #     import traceback
     #     traceback.print_exc()
 
-if __name__ == "__main__":
-    main()
+# if __name__ == "__main__":
+#     main()

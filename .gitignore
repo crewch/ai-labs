@@ -213,3 +213,7 @@ parser-vk/lib/vis-9.1.2/
 aivenv
 data/
 lib
+*.csv
+nodes.json
+nodes2.json
+ai2_venv
