@@ -79,7 +79,7 @@ class VKParser:
                 'owner_id': numeric_owner_id,
                 'count': min(100, max_posts - len(posts)),
                 'offset': offset,
-                'extended': 1  # Получаем дополнительную информацию
+                'extended': 1
             })
             
             if not response or 'items' not in response:
@@ -205,7 +205,6 @@ class VKParser:
         if not user_ids:
             return {}
             
-        # Фильтруем только числовые ID
         numeric_ids = []
         for user_id in user_ids:
             if isinstance(user_id, int) or (isinstance(user_id, str) and user_id.lstrip('-').isdigit()):
@@ -242,7 +241,6 @@ class VKParser:
         
         print(f"Обрабатываем пост {post_id}...")
         
-        # Основная информация о посте
         post_data = {
             'post_id': post_id,
             'owner_id': owner_id,
@@ -254,7 +252,6 @@ class VKParser:
             'views_count': post.get('views', {}).get('count', 0) if 'views' in post else 0
         }
         
-        # Проверяем, является ли пост репостом
         if 'copy_history' in post and post['copy_history']:
             original_post = post['copy_history'][0]
             post_data['is_repost'] = True
@@ -267,18 +264,15 @@ class VKParser:
             post_data['is_repost'] = False
             post_data['reposted_from'] = None
         
-        # Собираем лайки (только если owner_id числовой)
         if isinstance(owner_id, int):
             print(f"  Собираем лайки...")
             post_data['likes'] = self.get_likes(owner_id, post_id)
             time.sleep(0.34)
             
-            # Собираем комментарии
             print(f"  Собираем комментарии...")
             post_data['comments'] = self.get_comments(owner_id, post_id)
             time.sleep(0.34)
             
-            # Собираем репосты
             print(f"  Собираем репосты...")
             post_data['reposts'] = self.get_reposts(owner_id, post_id)
             time.sleep(0.34)
@@ -291,7 +285,6 @@ class VKParser:
         return post_data
     
     def parse_user_wall(self, user_input, max_posts=50):
-        """Парсит стену пользователя"""
         print(f"\n=== Начинаем парсинг стены пользователя {user_input} ===")
         
         posts, numeric_owner_id = self.get_wall_posts(user_input, max_posts)
@@ -308,32 +301,25 @@ class VKParser:
         return processed_posts, numeric_owner_id
     
     def collect_all_user_ids(self, posts_data):
-        """Собирает все user_id из данных"""
         user_ids = set()
         
         for post in posts_data:
-            # Лайки
             user_ids.update(post['likes'])
             
-            # Комментарии
             for comment in post['comments']:
                 user_ids.add(comment['from_id'])
             
-            # Репосты
             for repost in post['reposts']:
                 user_ids.add(repost['from_id'])
         
         return list(user_ids)
     
     def analyze_two_users(self, user1_input, user2_input, max_posts_per_user=20):
-        """Основной метод для анализа двух пользователей"""
         print(f"Запускаем анализ пользователей {user1_input} и {user2_input}")
         
-        # Парсим стены обоих пользователей
         user1_posts, user1_id = self.parse_user_wall(user1_input, max_posts_per_user)
         user2_posts, user2_id = self.parse_user_wall(user2_input, max_posts_per_user)
         
-        # Собираем все user_id для получения информации о пользователях
         all_user_ids = set()
         all_user_ids.update(self.collect_all_user_ids(user1_posts))
         all_user_ids.update(self.collect_all_user_ids(user2_posts))
@@ -341,7 +327,6 @@ class VKParser:
         print(f"Собираем информацию о {len(all_user_ids)} пользователях...")
         user_info = self.get_user_info(list(all_user_ids))
         
-        # Формируем итоговый результат
         result = {
             'analysis_info': {
                 'timestamp': datetime.now().isoformat(),
@@ -360,7 +345,6 @@ class VKParser:
         return result
     
     def save_to_json(self, data, filename=None):
-        """Сохраняет данные в JSON файл"""
         if filename is None:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             user1 = str(data['analysis_info']['user1_input']).replace('/', '_')
@@ -374,66 +358,44 @@ class VKParser:
         return filename
     
     def generate_interaction_csv(self, user_input, output_filename=None, max_posts=100):
-        """
-        Генерирует CSV файл со статистикой взаимодействий пользователей
-        
-        Args:
-            user_input: ID или короткое имя пользователя
-            output_filename: имя выходного файла (опционально)
-            max_posts: максимальное количество постов для анализа
-            
-        Returns:
-            Путь к созданному CSV файлу
-        """
         print(f"Генерируем CSV со статистикой взаимодействий для {user_input}...")
         
-        # Получаем посты пользователя
+
         posts, owner_id = self.parse_user_wall(user_input, max_posts)
         
         if not posts:
             print("Не удалось получить посты пользователя")
             return None
         
-        # Создаем словарь для агрегации статистики
-        # Структура: {interactor_id: {'likes': count, 'comments': count, 'reposts': count}}
         interactions = defaultdict(lambda: {'likes': 0, 'comments': 0, 'reposts': 0})
         
-        # Обрабатываем каждый пост для сбора статистики
         for post in posts:
             self._process_post_for_interactions(post, interactions, owner_id)
         
-        # Генерируем имя файла если не предоставлено
         if not output_filename:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             user_identifier = str(user_input).replace('/', '_')
             output_filename = f"vk_interactions_{user_identifier}_{timestamp}.csv"
         
-        # Записываем данные в CSV
         return self._write_interactions_to_csv(owner_id, interactions, output_filename)
     
     def _process_post_for_interactions(self, post, interactions, owner_id):
-        """Обрабатывает один пост для сбора статистики взаимодействий"""
         post_id = post['post_id']
         
-        # Обрабатываем лайки
         for like_user_id in post.get('likes', []):
             interactions[like_user_id]['likes'] += 1
         
-        # Обрабатываем комментарии
         for comment in post.get('comments', []):
             commenter_id = comment['from_id']
             interactions[commenter_id]['comments'] += 1
         
-        # Обрабатываем репосты
         for repost in post.get('reposts', []):
             reposter_id = repost['from_id']
             interactions[reposter_id]['reposts'] += 1
     
     def _write_interactions_to_csv(self, owner_id, interactions, output_filename):
-        # Определяем имя файла для сохранения (вы используете 'edges.csv', но output_filename игнорируется)
-        target_file = 'edges.csv'  # или можно использовать output_filename
+        target_file = 'edges.csv'
 
-        # Пытаемся загрузить существующий файл или создать пустой DataFrame
         try:
             edges = pd.read_csv(target_file)
         except FileNotFoundError:
@@ -445,7 +407,7 @@ class VKParser:
                 'reposts_count'
             ])
 
-        # Собираем все новые строки в список
+
         new_rows = []
         for interactor_id, stats in interactions.items():
             new_rows.append({
@@ -456,12 +418,10 @@ class VKParser:
                 'reposts_count': stats['reposts']
             })
 
-        # Добавляем все новые строки сразу
         if new_rows:
             new_df = pd.DataFrame(new_rows)
             edges = pd.concat([edges, new_df], ignore_index=True)
 
-        # Сохраняем один раз
         print(edges)
         edges.to_csv(target_file, index=False)
 
@@ -480,27 +440,3 @@ def edges_parser(wall_id):
     parser = VKParser(VK_ACCESS_TOKEN)
 
     csv_file = parser.generate_interaction_csv(wall_id, max_posts=1)
-    
-    # try:
-    #     # Запускаем анализ
-    #     result = parser.analyze_two_users(USER1_ID, USER2_ID, MAX_POSTS_PER_USER)
-        
-    #     # Сохраняем результаты
-    #     filename = parser.save_to_json(result)
-        
-    #     # Выводим краткую статистику
-    #     analysis = result['analysis_info']
-    #     print(f"\n=== АНАЛИЗ ЗАВЕРШЕН ===")
-    #     print(f"Пользователь 1: {analysis['user1_input']} -> ID: {analysis['user1_id']}")
-    #     print(f"Пользователь 2: {analysis['user2_input']} -> ID: {analysis['user2_id']}")
-    #     print(f"Проанализировано постов: {analysis['total_posts_analyzed']}")
-    #     print(f"Найдено пользователей: {analysis['total_users_found']}")
-    #     print(f"Файл с результатами: {filename}")
-        
-    # except Exception as e:
-    #     print(f"Произошла ошибка: {e}")
-    #     import traceback
-    #     traceback.print_exc()
-
-# if __name__ == "__main__":
-#     main()

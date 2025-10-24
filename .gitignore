@@ -212,8 +212,10 @@ parser-vk/lib/tom-select/
 parser-vk/lib/vis-9.1.2/
 aivenv
 data/
-lib
-*.csv
+edges.csv
+edges2.csv
+posts_count.csv
 nodes.json
 nodes2.json
 ai2_venv
+nodes_inference.json
