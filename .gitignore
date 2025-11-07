@@ -207,7 +207,7 @@ __marimo__/
 
 *.gz
 *.html
-*.csv
+edges.csv
 *.json
 
 aivenv
@@ -219,5 +219,4 @@ parser-vk/lib/bindings/
 parser-vk/lib/tom-select/
 parser-vk/lib/vis-9.1.2/
 
-!edges_inference.csv
 !saved_data/
